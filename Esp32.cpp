@@ -1,141 +1,123 @@
 #include "esp_camera.h"
 #include <WiFi.h>
-#include <Arduino.h> // Necessário para verificação de versão
+#include <WiFiUdp.h>
+#include <ESP32Servo.h>
 
-// ==========================================
-// 1. DEFINIÇÕES HARDWARE
-// ==========================================
-#define CAMERA_MODEL_AI_THINKER 
-#define LED_GPIO_NUM 4          // O LED do Flash é o pino 4
-
-// ==========================================
-// 2. CREDENCIAIS WI-FI
-// ==========================================
+/**
+ * 1. CONFIGURAÇÕES / SETTINGS
+ */
 const char *ssid = "";
 const char *password = "";
 
-// ==========================================
-// 3. DECLARAÇÃO DE FUNÇÕES
-// ==========================================
-void startCameraServer();
+#define SERVO_X_PIN 14 
+#define SERVO_Y_PIN 15 
+#define UDP_PORT 8888 
 
-// --- CORREÇÃO DO ERRO: IMPLEMENTAÇÃO DA FUNÇÃO DO LED ---
-// Esta função estava faltando e causava o erro de compilação.
-// Ela detecta se seu ESP32 é versão nova ou antiga automaticamente.
-void setupLedFlash(int pin) {
-    #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
-        // Código para ESP32 Core 3.0 (Seu caso provável)
-        // No Core 3.0, ledcAttach configura tudo de uma vez
-        ledcAttach(pin, 5000, 8); 
-    #else
-        // Código para ESP32 Core 2.x (Antigo)
-        ledcSetup(0, 5000, 8); // Canal 0, 5kHz, 8 bits
-        ledcAttachPin(pin, 0);
-    #endif
-}
+// Global Objects
+Servo servoX;
+Servo servoY;
+WiFiUDP udp;
+char packetBuffer[64]; // Reduced buffer for speed / Buffer reduzido para maior velocidade
+
+// Camera Model Definitions
+#define CAMERA_MODEL_AI_THINKER
+#include "camera_pins.h"
+
+void startCameraServer(); 
 
 void setup() {
-  pinMode(4, OUTPUT);
-  digitalWrite(4, HIGH); // Liga o LED no máximo
-  delay(2000);           // Espera 2 segundos
-  digitalWrite(4, LOW);
-  
-  Serial.begin(115200);
-  Serial.setDebugOutput(true);
-  Serial.println();
+  // Set CPU to maximum speed for faster processing
+  // Define CPU para velocidade máxima para processamento mais rápido
+  setCpuFrequencyMhz(240);
 
-  // ==========================================
-  // 4. CONFIGURAÇÃO DA CÂMERA
-  // ==========================================
+  // Servo setup with specific timings
+  // Configuração dos servos com timings específicos
+  servoX.setPeriodHertz(50); 
+  servoY.setPeriodHertz(50);
+  servoX.attach(SERVO_X_PIN, 500, 2400); 
+  servoY.attach(SERVO_Y_PIN, 500, 2400);
+  
+  // Initial position: Center
+  // Posição inicial: Centro
+  servoX.write(90);
+  servoY.write(90);
+
+  /**
+   * CAMERA CONFIGURATION / CONFIGURAÇÃO DA CÂMERA
+   */
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
-  
-  // Mapeamento correto para AI THINKER
-  config.pin_d0 = 5;
-  config.pin_d1 = 18;
-  config.pin_d2 = 19;
-  config.pin_d3 = 21;
-  config.pin_d4 = 36;   // D4 correto é 36 
-  config.pin_d5 = 39;
-  config.pin_d6 = 34;
-  config.pin_d7 = 35;
-  config.pin_xclk = 0;
-  config.pin_pclk = 22;
-  config.pin_vsync = 25;
-  config.pin_href = 23;
-  config.pin_sccb_sda = 26;
-  config.pin_sccb_scl = 27;
-  config.pin_pwdn = 32;
-  config.pin_reset = -1;
-  
+  config.pin_d0 = Y2_GPIO_NUM;
+  config.pin_d1 = Y3_GPIO_NUM;
+  config.pin_d2 = Y4_GPIO_NUM;
+  config.pin_d3 = Y5_GPIO_NUM;
+  config.pin_d4 = Y6_GPIO_NUM;
+  config.pin_d5 = Y7_GPIO_NUM;
+  config.pin_d6 = Y8_GPIO_NUM;
+  config.pin_d7 = Y9_GPIO_NUM;
+  config.pin_xclk = XCLK_GPIO_NUM;
+  config.pin_pclk = PCLK_GPIO_NUM;
+  config.pin_vsync = VSYNC_GPIO_NUM;
+  config.pin_href = HREF_GPIO_NUM;
+  config.pin_sscb_sda = SIOD_GPIO_NUM;
+  config.pin_sscb_scl = SIOC_GPIO_NUM;
+  config.pin_pwdn = PWDN_GPIO_NUM;
+  config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
-  config.frame_size = FRAMESIZE_SVGA;
   config.pixel_format = PIXFORMAT_JPEG;
-  config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
-  config.fb_location = CAMERA_FB_IN_PSRAM;
-  config.jpeg_quality = 12;
-  config.fb_count = 1;
-  
 
-  if (config.pixel_format == PIXFORMAT_JPEG) {
-    if (psramFound()) {
-      config.jpeg_quality = 10;
-      config.fb_count = 2;
-      config.grab_mode = CAMERA_GRAB_LATEST;
-    } else {
-      config.frame_size = FRAMESIZE_SVGA;
-      config.fb_location = CAMERA_FB_IN_DRAM;
-    }
-  } else {
-    config.frame_size = FRAMESIZE_240X240;
-#if CONFIG_IDF_TARGET_ESP32S3
+  // Optimize for low latency streaming (QVGA is faster than SVGA)
+  // Otimização para streaming de baixa latência (QVGA é mais rápido que SVGA)
+  if(psramFound()){
+    config.frame_size = FRAMESIZE_QVGA; 
+    config.jpeg_quality = 10;
     config.fb_count = 2;
-#endif
+    config.grab_mode = CAMERA_GRAB_LATEST; // Always get the newest frame / Pega sempre o quadro mais atual
+  } else {
+    config.frame_size = FRAMESIZE_QVGA;
+    config.fb_location = CAMERA_FB_IN_DRAM;
+    config.jpeg_quality = 12;
+    config.fb_count = 1;
   }
-
-  // Inicializa a câmera
+  
   esp_err_t err = esp_camera_init(&config);
-  if (err != ESP_OK) {
-    Serial.printf("Camera init failed with error 0x%x", err);
-    return;
-  }
+  if (err != ESP_OK) return;
 
-  sensor_t *s = esp_camera_sensor_get();
-  if (s->id.PID == OV3660_PID) {
-    s->set_vflip(s, 1);       
-    s->set_brightness(s, 1);  
-    s->set_saturation(s, -2); 
-  }
-
-  // ==========================================
-  // 5. INICIA O FLASH (LED)
-  // ==========================================
-  #if defined(LED_GPIO_NUM)
-    setupLedFlash(LED_GPIO_NUM);
-  #endif
-
-  // ==========================================
-  // 6. CONEXÃO WI-FI
-  // ==========================================
+  // Wi-Fi Connection / Conexão Wi-Fi
   WiFi.begin(ssid, password);
-  WiFi.setSleep(false);
-
-  Serial.print("WiFi connecting");
+  WiFi.setSleep(false); // Disable power save for lower latency / Desativa economia de energia para reduzir latência
+  
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+    delay(200);
   }
-  Serial.println("");
-  Serial.println("WiFi connected");
-
+  
   startCameraServer();
-
-  Serial.print("Camera Ready! Use 'http://");
-  Serial.print(WiFi.localIP());
-  Serial.println("' to connect");
+  udp.begin(UDP_PORT);
 }
 
 void loop() {
-  delay(10000);
+  /**
+   * DYNAMIC UDP PROCESSING / PROCESSAMENTO DINÂMICO UDP
+   */
+  int packetSize = udp.parsePacket();
+  
+  if (packetSize) {
+    int len = udp.read(packetBuffer, sizeof(packetBuffer) - 1);
+    if (len > 0) {
+      packetBuffer[len] = 0; // Null-terminate string
+
+      int posX, posY;
+      // Use sscanf for much faster parsing than String objects
+      // Uso de sscanf para processamento muito mais rápido que objetos String
+      if (sscanf(packetBuffer, "%d,%d", &posX, &posY) == 2) {
+        // Constrain values to safe servo limits (0-180)
+        // Limita os valores aos limites seguros do servo
+        servoX.write(constrain(posX, 0, 180));
+        servoY.write(constrain(posY, 0, 180));
+      }
+    }
+  }
+  // No delay() here to maintain maximum responsiveness
+  // Sem delay() aqui para manter a responsividade máxima
 }

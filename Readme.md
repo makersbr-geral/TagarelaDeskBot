@@ -3,6 +3,12 @@
 
 **Tagarela** is a DIY, open-source desktop robot designed to bridge the gap between AI models and the physical world. It acts as a physical copilot that can see, track, and interact with you using Python, Computer Vision, and ESP32.
 
+# To Do List
+* **Voice commands**
+* **Screen interaction**
+* **Api Consumer**
+* **Self Balance**
+
 ---
 
 ## 🎯 The Vision
