@@ -15,7 +15,13 @@ class MotionController:
         if coords == (-1, -1): return
         # Define o centro como alvo (ajuste se a resolução do ESP32 for diferente)
         self.mover_para_alvo(coords[0], coords[1], 320, 240)
-
+    def reset_para_90(self):
+        # Força a variável interna de volta ao centro real
+        self.pos_x = 90.0
+        self.pos_y = 90.0
+        # Envia o comando "90,90" para o ESP32 imediatamente
+        self._enviar(forcar=True)
+        
     def mover_para_alvo(self, tx, ty, cx, cy):
         agora = time.time()
         if (agora - self.last_send) < INTERVALO_COMANDOS: return
@@ -29,11 +35,11 @@ class MotionController:
 
         changed = False
         if abs(erro_x) > DEADZONE:
-            self.pos_x += vx if erro_x < 0 else -vx
+            self.pos_x -= vx if erro_x < 0 else -vx
             changed = True
         if abs(erro_y) > DEADZONE:
             # Inverter o sinal abaixo se o eixo Y estiver invertido
-            self.pos_y += vy if erro_y < 0 else -vy
+            self.pos_y -= vy if erro_y < 0 else -vy
             changed = True
 
         if changed:

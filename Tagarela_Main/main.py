@@ -9,7 +9,8 @@ from core.motion_control import MotionController
 from config import *
 import numpy as np
 # --- ESTADOS DO SISTEMA ---
-S_MENU, S_FACE, S_HAND = "MENU", "FACE", "HAND"
+S_MENU, S_FACE, S_HAND, S_home = "MENU", "FACE", "HAND","HOME"
+
 S_DEV, S_WORK = "DEV_ASSIST", "PC_OPERATOR"
 
 class TagarelaBot:
@@ -74,7 +75,7 @@ class TagarelaBot:
             while True:
                 try:
                     # Ouve por 4 segundos
-                    audio = recognizer.listen(source, phrase_time_limit=4)
+                    audio = recognizer.listen(source, phrase_time_limit=10)
                     comando = recognizer.recognize_google(audio, language='pt-BR').lower()
                     print(f">>> VOCÊ DISSE: {comando}")
                     
@@ -98,9 +99,25 @@ class TagarelaBot:
                         elif "mouse" in comando or "operador" in comando:
                             novo_estado = S_WORK
                             resposta = "Controle de mouse ativado."
+                        # Dentro de ouvir_comandos(self), substitua o elif do "home" por este:
+                        elif "home" in comando:
+                            novo_estado = S_home
+                            resposta = "Indo para posição inicial"      
+                            
                         elif "diga" in comando or "fale" in comando:
-                            self.falar("Sistemas operacionais e prontos, Wagner.")
-                            time.sleep(3) # Pausa para não ouvir a si mesmo
+    # Captura o que vem depois de "diga" ou "fale"
+    # Exemplo: "Tagarela diga o sistema está pronto" -> texto_para_falar = "o sistema está pronto"
+                            if "diga" in comando:
+                                texto_para_falar = comando.split("diga")[-1].strip()
+                            else:
+                                texto_para_falar = comando.split("fale")[-1].strip()
+                            
+                            if texto_para_falar:
+                                self.falar(texto_para_falar)
+                            else:
+                                self.falar("Eu não entendi o que é para dizer, Wagner.")
+                                
+                            time.sleep(5) # Evita que ele ouça a própria voz
                             continue
 
                         if novo_estado:
@@ -171,7 +188,14 @@ class TagarelaBot:
             elif self.state == S_FACE:
                 if info['face_detected']:
                     self.motion.move_to_target(info['face_coords'])
-
+            # Dentro do método run(self), na seção --- EXECUÇÃO DOS MODOS ---
+            
+           # --- EXECUÇÃO DOS MODOS ---
+            elif self.state == S_home:
+                self.motion.reset_para_90() # Usa o novo método de ângulo fixo
+                self.falar("Retornando ao centro.")
+                self.state = S_MENU # Volta para o menu para parar de enviar comandos
+                
             elif self.state == S_HAND:
                 if info['hand_detected']:
                     self.motion.move_to_target(info['hand_coords'])
