@@ -1,0 +1,11 @@
+opencv-python
+mediapipe
+numpy
+requests
+flask
+pyautogui
+google-generativeai
+python-dotenv
+pyttsx3
+SpeechRecognition
+pyaudio

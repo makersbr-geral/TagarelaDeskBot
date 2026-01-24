@@ -28,7 +28,7 @@ void startCameraServer();
 void setup() {
   // Set CPU to maximum speed for faster processing
   // Define CPU para velocidade máxima para processamento mais rápido
-  setCpuFrequencyMhz(240);
+  setCpuFrequencyMhz(240); // this here makes the Image looks darker, by reducing this the image will get clear but low fps
 
   // Servo setup with specific timings
   // Configuração dos servos com timings específicos
