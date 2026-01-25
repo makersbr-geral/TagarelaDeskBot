@@ -25,7 +25,7 @@ One of its core missions is **accessibility**: The robot can take screenshots, s
 ## 🚀 Key Features in the Code
 * **Real-time Tracking:** Smooth movement logic for Face, Hand (Index finger), and Pose.
 * **Gesture Control System:**
-    * **5 Fingers:** Wake up / Abort / Go back.
+    * **5 Fingers:** Wake up / Abort / Go back. << I GET IT OUT COS IS MUCH BETTER TO TALK TO IT... TESTING TTS AND STT
     * **Pinch Gesture:** Toggle ESP32 Flash/LED (with visual progress bar).
     * **Fist/0 Fingers:** Confirm selection or Sleep mode.
 * **Anti-Jitter Filter:** Smart movement threshold to reduce mechanical vibration and save Wi-Fi bandwidth.
