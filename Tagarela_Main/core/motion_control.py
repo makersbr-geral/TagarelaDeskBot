@@ -11,10 +11,20 @@ class MotionController:
         self.last_x, self.last_y = 0, 0
         self.last_send = 0
 
-    def move_to_target(self, coords):
+    def move_to_target(self, coords, resolucao_atual=(480, 320)):
+        # coords: (x, y) em pixels que veio da visão
+        # resolucao_atual: (largura, altura) da imagem que está chegando
+        
         if coords == (-1, -1): return
-        # Define o centro como alvo (ajuste se a resolução do ESP32 for diferente)
-        self.mover_para_alvo(coords[0], coords[1], 320, 240)
+
+        largura, altura = resolucao_atual
+        
+        # O centro é sempre metade da largura e altura
+        centro_x = largura // 2
+        centro_y = altura // 2
+        
+        # Manda para a lógica de movimento com o centro dinâmico
+        self.mover_para_alvo(coords[0], coords[1], centro_x, centro_y)
     def reset_para_90(self):
         # Força a variável interna de volta ao centro real
         self.pos_x = 90.0

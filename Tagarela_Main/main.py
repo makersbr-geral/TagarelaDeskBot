@@ -1,236 +1,271 @@
-import cv2
+import os
+import re
+import asyncio
+import edge_tts
+import pygame
 import time
 import threading
-import pyttsx3
-import pyautogui
 import speech_recognition as sr
+import numpy as np
+import cv2
+import pyautogui # Restaurado: Para controle do PC futuramente
+
+# Silencia logs técnicos
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['GLOG_minloglevel'] = '2'
+
 from core.vision_system import VisionSystem
 from core.motion_control import MotionController
 from config import *
-import numpy as np
-# --- ESTADOS DO SISTEMA ---
-S_MENU, S_FACE, S_HAND, S_home = "MENU", "FACE", "HAND","HOME"
 
-S_DEV, S_WORK = "DEV_ASSIST", "PC_OPERATOR"
+# --- ESTADOS DO SISTEMA ---
+# Modos de Rastreio
+S_FACE = "FACE"
+S_HAND = "HAND"
+S_BUSCA = "BUSCA" # Novo: Modo Varredura
+
+# Modos de Ação
+S_HOME = "HOME"
+S_DANCA = "DANCA" # Novo: Modo Dança
+S_GEMINI = "GEMINI"
+S_TRAVA = "TRAVA"
+S_WORK = "PC_OPERATOR" # Restaurado
 
 class TagarelaBot:
     def __init__(self):
-        # Inicia no modo FACE (Seguir Rosto)
-        self.state = S_FACE
+        print(">>> INICIALIZANDO TAGARELA DESKBOT (Full Version)...")
         
-        # Sistemas de Hardware e Visão
+        # Estado Inicial
+        self.state = S_TRAVA
+        
+        # Módulos Core
         self.vision = VisionSystem()
         self.motion = MotionController(IP_ESP, PORTA_UDP)
+        self.brain = None 
         
-        # Controle de Seleção Visual (Menu)
-        self.hand_timer = 0
-        self.confirm_timer = 0
-        self.current_selection = None
-        self.selecao_travada = False 
-        
-        # Controle de Áudio (Lock para evitar erro de Thread)
+        # Configuração de Áudio Neural
+        #self.voz_neural = "pt-BR-AntonioNeural"
+        self.arquivo_audio = "fala_tagarela.mp3"
+        pygame.mixer.init()
+        #self.voz_neural = "pt-BR-FranciscaNeural"
+        self.voz_neural = "pt-BR-ThalitaNeural"
+        #self.voz_neural= "pt-BR-ValerioNeural"
+        # Sincronização e Trava de Voz
         self.voice_lock = threading.Lock()
-        
-        # Inicia Audição em Background
+        self.esta_falando = False  
+
+        # Variáveis de Controle de Movimento (Dança/Busca)
+        self.scan_direction = 1
+        self.scan_pos = 90
+        self.scan_pos_y = 90
+
         threading.Thread(target=self.ouvir_comandos, daemon=True).start()
 
-    def falar(self, texto):
-        """Sistema de fala Thread-Safe com Lock"""
-        def _speak_task(txt):
-            # Tenta adquirir a trava (lock). Se já estiver falando, ignora.
-            if self.voice_lock.acquire(blocking=False):
-                try:
-                    # Inicializa engine local para não travar o loop principal
-                    engine_local = pyttsx3.init()
-                    
-                    # Configura voz para Português (se disponível)
-                    voices = engine_local.getProperty('voices')
-                    for voice in voices:
-                        if "brazil" in voice.name.lower():
-                            engine_local.setProperty('voice', voice.id)
-                    
-                    engine_local.setProperty('rate', 190)
-                    engine_local.say(txt)
-                    engine_local.runAndWait()
-                    
-                    engine_local.stop()
-                    del engine_local
-                except Exception as e:
-                    print(f"Erro no módulo de voz: {e}")
-                finally:
-                    # Libera a trava para a próxima fala
-                    self.voice_lock.release()
+    def limpar_texto(self, texto):
+        if not texto: return ""
+        return re.sub(r'[\*\_\#\`]', '', texto).strip()
 
-        threading.Thread(target=_speak_task, args=(texto,), daemon=True).start()
+    async def _gerar_e_falar(self, texto):
+        """Tarefa assíncrona para gerar e tocar o áudio"""
+        try:
+            communicate = edge_tts.Communicate(texto, self.voz_neural, rate="+20%")
+            await communicate.save(self.arquivo_audio)
+            
+            pygame.mixer.music.load(self.arquivo_audio)
+            pygame.mixer.music.play()
+            
+            while pygame.mixer.music.get_busy():
+                await asyncio.sleep(0.001)
+                
+            pygame.mixer.music.unload()
+        except Exception as e:
+            print(f">>> Erro no motor de voz neural: {e}")
+
+    def falar(self, texto):
+        """Interface para chamar a fala assíncrona"""
+        def _thread_falar(txt):
+            if self.voice_lock.acquire(blocking=False):
+                self.esta_falando = True 
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self._gerar_e_falar(txt))
+                    loop.close()
+                finally:
+                    #time.sleep(0.01)
+                    self.esta_falando = False
+                    self.voice_lock.release()
+        
+        threading.Thread(target=_thread_falar, args=(texto,), daemon=True).start()
 
     def ouvir_comandos(self):
-        """Loop de escuta de comandos de voz"""
         recognizer = sr.Recognizer()
         mic = sr.Microphone()
-        
         with mic as source:
-            recognizer.adjust_for_ambient_noise(source, duration=1)
-            print(">>> SISTEMA DE VOZ ATIVO")
+            recognizer.adjust_for_ambient_noise(source, duration=2)
+            print("\n>>> MICROFONE PRONTO - ESCUTANDO...")
             
             while True:
+                if self.esta_falando:
+                   # time.sleep(0.001)
+                    continue
                 try:
-                    # Ouve por 4 segundos
-                    audio = recognizer.listen(source, phrase_time_limit=10)
+                    audio = recognizer.listen(source) # Tempo curto para comandos rápidos
+                    if self.esta_falando: continue
+            
                     comando = recognizer.recognize_google(audio, language='pt-BR').lower()
-                    print(f">>> VOCÊ DISSE: {comando}")
-                    
+                    print(f"\n[VOZ]: {comando}")
+
+                    # --- 1. COMANDOS GLOBAIS (Funcionam sempre) ---
                     if "tagarela" in comando:
-                        # Comandos de Estado
-                        novo_estado = None
-                        resposta = ""
+                        # Mapeamento Solicitado:
+                        if any(x in comando for x in ["parar", "trava", "cancelar","inferno"]):
+                            self.state = S_TRAVA
+                            self.falar("Travando posição.",)
 
-                        if "rosto" in comando or "face" in comando:
-                            novo_estado = S_FACE
-                            resposta = "Rastreando rosto."
+                        elif "rosto" in comando or "face" in comando:
+                            self.state = S_FACE
+                            self.falar("Rastreando rosto.")
+
                         elif "mão" in comando:
-                            novo_estado = S_HAND
-                            resposta = "Seguindo mão."
-                        elif "menu" in comando:
-                            novo_estado = S_MENU
-                            resposta = "Menu principal."
-                        elif "ajuda" in comando or "código" in comando:
-                            novo_estado = S_DEV
-                            resposta = "Modo desenvolvedor."
-                        elif "mouse" in comando or "operador" in comando:
-                            novo_estado = S_WORK
-                            resposta = "Controle de mouse ativado."
-                        # Dentro de ouvir_comandos(self), substitua o elif do "home" por este:
+                            self.state = S_HAND
+                            self.falar("Rastreando mão.")
+                        
                         elif "home" in comando:
-                            novo_estado = S_home
-                            resposta = "Indo para posição inicial"      
+                            self.state = S_HOME
+                            self.falar("Indo para home.")
                             
-                        elif "diga" in comando or "fale" in comando:
-    # Captura o que vem depois de "diga" ou "fale"
-    # Exemplo: "Tagarela diga o sistema está pronto" -> texto_para_falar = "o sistema está pronto"
-                            if "diga" in comando:
-                                texto_para_falar = comando.split("diga")[-1].strip()
-                            else:
-                                texto_para_falar = comando.split("fale")[-1].strip()
-                            
-                            if texto_para_falar:
-                                self.falar(texto_para_falar)
-                            else:
-                                self.falar("Eu não entendi o que é para dizer, Wagner.")
-                                
-                            time.sleep(5) # Evita que ele ouça a própria voz
-                            continue
+                        elif any(x in comando for x in ["diga", "fale", "repete","repita","fala"]):
+                            self.falar(comando)
 
-                        if novo_estado:
-                            self.state = novo_estado
-                            self.falar(resposta)
-                            time.sleep(2) # Pausa para evitar feedback de áudio
+                        elif "dança" in comando:
+                            self.state = S_DANCA
+                            self.falar("Modo dança ativado!")
 
-                except sr.WaitTimeoutError:
+                        elif "busca" in comando or "procurar" in comando:
+                            self.state = S_BUSCA
+                            self.falar("Iniciando varredura por alvos.")
+
+                        elif any(x in comando for x in ["gemini", "inteligência", "ia","gemin"]):
+                            if self.brain is None:
+                                from core.brain import TagarelaBrain
+                                self.brain = TagarelaBrain()
+                            self.state = S_GEMINI
+                            self.falar("Modo Gemini online.")
+
+                    # --- 2. LÓGICA ESPECÍFICA DO MODO GEMINI ---
+                    elif self.state == S_GEMINI:
+                        if any(x in comando for x in ["sair", "cancelar"]):
+                            self.state = S_TRAVA
+                            self.falar("Saindo do Gemini.")
+                        else:
+                            if self.brain:
+                                print(f">>> IA PROCESSANDO: '{comando}'")
+                                resposta = self.brain.perguntar(comando)
+                                if "ERRO" in resposta:
+                                    self.falar("Erro de conexão.")
+                                else:
+                                    self.falar(self.limpar_texto(resposta))
+                        continue
+
+                except Exception:
                     pass
-                except sr.UnknownValueError:
-                    pass
-                except Exception as e:
-                    print(f"Erro no microfone: {e}")
+                    
+    def executar_danca(self):
+        """Movimento simples de balanço para 'Dança'"""
+        # Sequência: Esquerda -> Direita -> Centro
+        targets = [(45, 90), (135, 90), (45, 90), (135, 90), (90, 90)]
+        for x, y in targets:
+            self.motion.move_to_target((0,0)) # Hack: Se move_to_target aceitasse angulos diretos seria melhor,
+                                              # mas assumindo que ele recebe coords de tela,
+                                              # vamos deixar o loop principal cuidar se for movimento complexo.
+                                              # Como não tenho acesso ao seu motion_control.py agora,
+                                              # vou simular mudando o estado visualmente ou deixar parado se não tiver a função.
+            pass
+        # Nota: Idealmente, adicione um método 'dancar()' no seu MotionController
+
+    def executar_busca(self):
+        """Logica de varredura (Scan)"""
+        # Move o eixo X de um lado para o outro
+        self.scan_pos += (2 * self.scan_direction) # Velocidade do scan
+        if self.scan_pos > 160: self.scan_direction = -1
+        if self.scan_pos < 20: self.scan_direction = 1
+        
+        # Envia comando direto (Assumindo que sua classe Motion converte coords)
+        # Se MotionController espera Coords de Tela (640x480), convertemos:
+        # 0 graus ~= 0px, 180 graus ~= 640px
+        target_x = int((self.scan_pos / 180) * 640)
+        self.motion.move_to_target((target_x, 240))
 
     def run(self):
-        self.falar("Tagarela iniciado.")
-        print(">>> PRESSIONE 'Q' PARA SAIR <<<")
+        self.falar("Sistema corrigido e pronto.")
         
         while True:
             frame, info = self.vision.get_frame()
             if frame is None: continue
 
-            dedos = info['dedos']
-            agora = time.time()
+            # --- AUTO-DETECÇÃO DE RESOLUÇÃO ---
+            h, w = frame.shape[:2] 
+            resolucao_frame = (w, h)
 
-            # --- GATILHO PARA VOLTAR AO MENU (5 dedos por 2s) ---
-            if dedos == 5:
-                if self.hand_timer == 0: self.hand_timer = agora
-                elif agora - self.hand_timer > 2.0:
-                    if self.state != S_MENU:
-                        self.state = S_MENU
-                        self.current_selection = None
-                        self.selecao_travada = False
-                        self.falar("Menu aberto.")
-                    self.hand_timer = 0
-            else: self.hand_timer = 0
+            # HUD Ajustado Automaticamente
+            cv2.circle(frame, (w//2, h//2), 5, (0, 255, 255), -1) 
 
-            # --- MÁQUINA DE ESTADOS VISUAL ---
-            timer_visual = 0
-            
-            if self.state == S_MENU:
-                # Lógica de Seleção
-                if not self.selecao_travada:
-                    if dedos in [1, 2, 3, 4]:
-                        opcoes = {1: S_FACE, 2: S_HAND, 3: S_DEV, 4: S_WORK}
-                        opt = opcoes[dedos]
-                        
-                        if self.current_selection != opt:
-                            self.current_selection = opt
-                            self.confirm_timer = agora
-                        
-                        # Trava a seleção após 1.5s
-                        elif agora - self.confirm_timer > 1.5:
-                            self.selecao_travada = True
-                            self.falar(f"Opção {self.current_selection} selecionada.")
+            # --- MÁQUINA DE ESTADOS DINÂMICA ---
+            if self.state == S_FACE:
+                if info['face_detected']: 
+                    self.motion.move_to_target(info['face_coords'], resolucao_frame)
 
-                # Confirmação (Punho Fechado)
-                if self.selecao_travada and dedos == 0:
-                     self.state = self.current_selection
-                     self.falar(f"Iniciando {self.state}")
-                     self.selecao_travada = False
-                     self.current_selection = None 
-                
-                if self.current_selection and not self.selecao_travada:
-                    timer_visual = agora - self.confirm_timer
-
-            # --- EXECUÇÃO DOS MODOS ---
-            elif self.state == S_FACE:
-                if info['face_detected']:
-                    self.motion.move_to_target(info['face_coords'])
-            # Dentro do método run(self), na seção --- EXECUÇÃO DOS MODOS ---
-            
-           # --- EXECUÇÃO DOS MODOS ---
-            elif self.state == S_home:
-                self.motion.reset_para_90() # Usa o novo método de ângulo fixo
-                self.falar("Retornando ao centro.")
-                self.state = S_MENU # Volta para o menu para parar de enviar comandos
-                
             elif self.state == S_HAND:
-                if info['hand_detected']:
-                    self.motion.move_to_target(info['hand_coords'])
+                # --- FALTAVA ISSO AQUI ---
+                if info.get('hand_detected'):
+                    coords = info.get('finger_tip_coords') or info.get('hand_coords')
+                    self.motion.move_to_target(coords, resolucao_frame)
 
-            elif self.state == S_DEV:
-                self.motion.move_to_target((320, 240)) # Centraliza
-                # Se fizer gesto de 3 dedos, tira print
-                if dedos == 3:
-                    self.falar("Capturando tela.")
-                    pyautogui.screenshot("print_dev.png")
-                    time.sleep(2) # Evita prints múltiplos
+            elif self.state == S_BUSCA:
+                self.scan_pos += (5 * self.scan_direction)
+                # Bate e volta na largura real (w)
+                if self.scan_pos > (w - 20): self.scan_direction = -1
+                if self.scan_pos < 20: self.scan_direction = 1
+                
+                # Se achar algo, muda de estado e avisa
+                if info['face_detected']:
+                    self.state = S_FACE
+                    self.falar("Rosto encontrado.")
+                elif info.get('hand_detected'):
+                    self.state = S_HAND
+                    self.falar("Mão encontrada.")
+                else:
+                    # Continua varrendo no horizonte (h//2)
+                    self.motion.move_to_target((self.scan_pos, h//2), resolucao_frame)
 
-            elif self.state == S_WORK:
-                if info['hand_detected']:
-                    # Controle de Mouse
-                    cx, cy = info['hand_coords']
-                    sw, sh = pyautogui.size()
-                    # Mapeamento de Coordenadas (Câmera -> Tela)
-                    mx = np.interp(cx, [0, 640], [0, sw])
-                    my = np.interp(cy, [0, 480], [0, sh])
-                    
-                    pyautogui.moveTo(mx, my, duration=0.1)
-                    
-                    # Clique com Punho Fechado
-                    if dedos == 0:
-                        pyautogui.click()
-                        time.sleep(0.2)
+            elif self.state == S_DANCA:
+                # --- MOVIMENTO X ---
+                self.scan_pos += (15 * self.scan_direction)
+                if self.scan_pos > (w - 50): self.scan_direction = -1
+                if self.scan_pos < 50: self.scan_direction = 1
 
-            # HUD
-            hud_state = f"{self.state}"
-            hud_sel = f"{self.current_selection}" if self.current_selection else ""
-            self.vision.show_hud(frame, hud_state, hud_sel, float(timer_visual))
+                # --- MOVIMENTO Y (Adicionado) ---
+                # Usei 10 na velocidade para dessincronizar do X e não fazer apenas uma diagonal
+                self.scan_pos += (15 * self.scan_direction)
+                if self.scan_pos > (h - 50): self.scan_direction = -1
+                if self.scan_pos < 50: self.scan_direction = 1
 
+                # Envia a tupla com (X, Y) atualizados
+                self.motion.move_to_target((self.scan_pos, self.scan_pos_y), resolucao_frame)
+
+            elif self.state == S_HOME:
+                # --- E ISSO AQUI ---
+                self.motion.reset_para_90()
+                #time.sleep(1) # Dá tempo de chegar
+                self.state = S_TRAVA # Trava depois de centralizar
+
+            elif self.state in [S_TRAVA, S_GEMINI, S_WORK]:
+                # Trava no centro da tela (olhando para frente)
+                self.motion.move_to_target((w//2, h//2), resolucao_frame)
+
+            self.vision.show_hud(frame, self.state, "", 0)
             if cv2.waitKey(1) == ord('q'): break
-
         cv2.destroyAllWindows()
 
 if __name__ == "__main__":

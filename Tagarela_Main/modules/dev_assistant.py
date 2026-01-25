@@ -1,3 +1,4 @@
+AQUI É SÓ UM EXEMPLO DA GEMINI
 import pyautogui
 import google.generativeai as genai
 from config import GEMINI_API_KEY

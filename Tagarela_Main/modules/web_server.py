@@ -1,3 +1,4 @@
+AINDA NÃO IMPLEMENTADO MAS JÁ TESTEI DEU CERTO
 from flask import Flask, render_template, Response, request
 
 app = Flask(__name__)

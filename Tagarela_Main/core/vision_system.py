@@ -44,10 +44,11 @@ class VisionSystem:
         info = {
             'face_detected': False, 'face_coords': (-1, -1),
             'hand_detected': False, 'hand_coords': (-1, -1),
+            'finger_tip_coords': (-1, -1), # Padrão para o robô seguir
             'dedos': -1
         }
 
-        # Processar Rosto (Malha Tesselation)
+        # Processar Rosto
         if res_face.multi_face_landmarks:
             info['face_detected'] = True
             face_lms = res_face.multi_face_landmarks[0]
@@ -60,8 +61,13 @@ class VisionSystem:
             info['hand_detected'] = True
             hl = res_hands.multi_hand_landmarks[0]
             info['dedos'] = self.contar_dedos(hl)
-            p = hl.landmark[8] # Dedo indicador
-            info['hand_coords'] = (int(p.x * iw), int(p.y * ih))
+            
+            # Ponto 8: INDEX_FINGER_TIP (Ponta do dedo indicador)
+            p = hl.landmark[8] 
+            coords = (int(p.x * iw), int(p.y * ih))
+            info['hand_coords'] = coords
+            info['finger_tip_coords'] = coords # Garante que a main receba o nome correto
+            
             self.mp_drawing.draw_landmarks(frame, hl, self.mp_hands.HAND_CONNECTIONS, self.draw_spec_hand)
 
         return frame, info

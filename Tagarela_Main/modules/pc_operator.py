@@ -1,3 +1,4 @@
+AQUI ATÉ QUE FUNCIONOU, REVER MAIS TARDE
 import pyautogui
 import time
 
