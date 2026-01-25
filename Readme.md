@@ -17,7 +17,7 @@ One of its core missions is **accessibility**: The robot can take screenshots, s
 
 ## 🧠 Current Tech Stack
 * **Language:** Python 3.x
-* **Computer Vision:** [MediaPipe](https://mediapipe.dev/) (Face Mesh, Hands, and Pose detection).
+* **Computer Vision:** [MediaPipe](https://mediapipe.dev/) (Face Mesh, Hands, and Pose detection). << USING JUST CV2 AFTER SOME TESTS, STILL TESTING
 * **Communication:** Low-latency **UDP Protocol** for real-time servo control.
 * **Hardware (Current Prototype):** ESP32-CAM, Pan-Tilt Servo system.
 * **Interface:** Gesture-based menu system (no keyboard/mouse needed for basic operation).
