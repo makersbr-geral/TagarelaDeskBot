@@ -49,18 +49,25 @@ class TagarelaApp:
             page.update()
 
         def on_manual_move(e):
-            # Se mexer no slider, trava o robô para manual
             if self.bot.state != "TRAVADO":
                 self.bot.state = "TRAVADO"
                 status_text.value = "Estado: MANUAL"
                 page.update()
             
-            # Envia via UDP Local
-            cmd = f"{int(slider_x.value)},{int(slider_y.value)}\n"
+            val_x = int(slider_x.value)
+            val_y = int(slider_y.value)
+
+            # 1. Envia direto para o robô (resposta imediata visual)
+            cmd = f"{val_x},{val_y}\n"
             try:
                 self.sock.sendto(cmd.encode(), (IP_ESP, PORTA_UDP))
+                
+                # 2. AVISA O MOTION CONTROLLER PARA SINCRONIZAR (Correção do Pulo)
+                if hasattr(self.bot, 'motion'):
+                    self.bot.motion.sync_manual_position(val_x, val_y)
+                    
             except Exception as ex: 
-                print(f"Erro UDP Slider: {ex}")
+                print(f"Erro: {ex}")
                 
         slider_x = ft.Slider(min=0, max=180, value=90, label="Pan (X)", on_change=on_manual_move)
         slider_y = ft.Slider(min=0, max=180, value=90, label="Tilt (Y)", on_change=on_manual_move)

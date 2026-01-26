@@ -17,13 +17,14 @@ TOPICO_COMANDO = "tagarela/comando/servos"
 # =============================================================================
 # MECATRÔNICA / MOTION TUNING (Ajuste Turbo)
 # =============================================================================
-GANHO_VELOCIDADE = 0.03     # Era 0.09 (Agora ele corre atrás do rosto)
-VELOCIDADE_MAX_PASSO = 2.0   # Era 2.14 (Libera o motor para girar rápido)
-DEADZONE = 25                # Era 40 (Aumenta a precisão, 40 é muito "folgado")
+# MECATRÔNICA
+GANHO_VELOCIDADE = 0.05      # Aumentei um pouco para compensar o delay maior
+VELOCIDADE_MAX_PASSO = 2.0
+DEADZONE = 35                # Aumente para 35 ou 40 (evita correções inúteis que travam o ESP)
 
-# Delay TÉCNICO (Não zere isso!)
-# 0.02s = 50Hz (Frequência nativa de servos analógicos como MG996R/SG90)
-INTERVALO_COMANDOS = 0.02
+# IMPORTANTE: Aumente este tempo!
+# 0.1s = 10 comandos por segundo (Alivia o Wi-Fi do ESP32)
+INTERVALO_COMANDOS = 0.1
 
 # Limites Físicos dos Servos
 SERVO_MIN_X, SERVO_MAX_X = 0, 180
@@ -38,4 +39,4 @@ LIMITE_PERDA_FRAMES = 300 # Quadros sem alvo antes de iniciar varredura
 # INTEGRAÇÃO IA (DEV ASSISTANT)
 # =============================================================================
 # Recomendo usar variáveis de ambiente para segurança, mas pode por direto aqui para teste
-GEMINI_KEY = "AIzaSyDt16mC9_RTStUcVjzHltc6XmIq8D0OnP8"
+GEMINI_KEY = ""
