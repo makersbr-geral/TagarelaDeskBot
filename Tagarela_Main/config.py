@@ -8,16 +8,17 @@ PORTA_UDP = 8888
 URL_STREAM = f"http://{IP_ESP}:81/stream"
 URL_FLASH_ON = f"http://{IP_ESP}/control?var=led_intensity&val=255"
 URL_FLASH_OFF = f"http://{IP_ESP}/control?var=led_intensity&val=0"
-
 # Servidor Web (Modo IoT)
-WEB_SERVER_HOST = '0.0.0.0'
-WEB_SERVER_PORT = 5000
+# No config.py
+MQTT_BROKER = "broker.hivemq.com"
+MQTT_PORT = 1883
+TOPICO_COMANDO = "tagarela/comando/servos"
 
 # =============================================================================
 # MECATRÔNICA / MOTION TUNING (Ajuste Turbo)
 # =============================================================================
-GANHO_VELOCIDADE = 0.065      # Era 0.09 (Agora ele corre atrás do rosto)
-VELOCIDADE_MAX_PASSO = 1.2   # Era 2.14 (Libera o motor para girar rápido)
+GANHO_VELOCIDADE = 0.03     # Era 0.09 (Agora ele corre atrás do rosto)
+VELOCIDADE_MAX_PASSO = 2.0   # Era 2.14 (Libera o motor para girar rápido)
 DEADZONE = 25                # Era 40 (Aumenta a precisão, 40 é muito "folgado")
 
 # Delay TÉCNICO (Não zere isso!)
@@ -37,4 +38,4 @@ LIMITE_PERDA_FRAMES = 300 # Quadros sem alvo antes de iniciar varredura
 # INTEGRAÇÃO IA (DEV ASSISTANT)
 # =============================================================================
 # Recomendo usar variáveis de ambiente para segurança, mas pode por direto aqui para teste
-GEMINI_KEY = "AQUI VC COLOCA A CHAVE QUE VC TEM QUE FAZER LÁ NO GOOGLE DEV"
+GEMINI_KEY = "AIzaSyDt16mC9_RTStUcVjzHltc6XmIq8D0OnP8"
